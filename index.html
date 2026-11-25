@@ -1,0 +1,1496 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Gerenciador de Cartão Compartilhado</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- html2canvas para exportar fatura como imagem -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; overflow-x: hidden; }
+
+        /* Variáveis Dinâmicas de Tema (Roxo Padrão) */
+        :root {
+            --theme-primary: #9333ea; /* Purple 600 */
+            --theme-primary-hover: #7e22ce; /* Purple 700 */
+            --theme-light: #f3e8ff; /* Purple 100 */
+            --theme-text: #c084fc; /* Purple 400 */
+            --theme-gradient-from: #581c87; /* Purple 900 */
+        }
+
+        .dynamic-bg { background-color: var(--theme-primary) !important; }
+        .dynamic-bg:hover { background-color: var(--theme-primary-hover) !important; }
+        .dynamic-text { color: var(--theme-primary) !important; }
+        .dynamic-text-sec { color: var(--theme-text) !important; }
+        .dynamic-border { border-color: var(--theme-primary) !important; }
+        .dynamic-ring:focus { --tw-ring-color: var(--theme-primary) !important; }
+        .dynamic-light-bg { background-color: var(--theme-light) !important; }
+        .dynamic-banner-grad { background-image: linear-gradient(to bottom right, var(--theme-gradient-from), #0f172a) !important; }
+
+        /* Correção para evitar corte vertical de fontes no html2canvas com Tailwind CSS */
+        #cartaoExtratoExportar, #cartaoExtratoExportar * {
+            box-sizing: border-box !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen flex flex-col w-full max-w-[100vw]">
+
+    <!-- Header Elegante -->
+    <header class="bg-slate-900 text-white shadow-lg sticky top-0 z-40 w-full">
+        <div class="max-w-6xl mx-auto px-3 sm:px-4 py-3 flex justify-between items-center gap-2">
+            <div class="flex items-center gap-2.5 min-w-0">
+                <div class="dynamic-bg p-2 rounded-xl shadow-md transition-colors shrink-0">
+                    <i data-lucide="credit-card" class="w-5 h-5 text-white"></i>
+                </div>
+                <div class="min-w-0">
+                    <h1 class="text-base sm:text-lg font-bold tracking-tight truncate">Faturas Compartilhadas</h1>
+                    <p class="text-[11px] text-slate-400 truncate" id="headerTitularSub">Titular: Carregando...</p>
+                </div>
+            </div>
+
+            <!-- Controles do Topo Direito -->
+            <div class="flex items-center gap-2 shrink-0">
+                <div class="hidden sm:flex items-center gap-3 bg-slate-800/80 border border-slate-700/60 px-3 py-1.5 rounded-xl text-xs">
+                    <div><span class="text-slate-400">Virada:</span> <span id="lblVirada" class="font-bold dynamic-text-sec">10</span></div>
+                    <div><span class="text-slate-400">Venc:</span> <span id="lblVencimento" class="font-bold dynamic-text-sec">17</span></div>
+                </div>
+                <button onclick="abrirModalConfig()" class="bg-slate-800 hover:bg-slate-700 p-2 sm:p-2.5 rounded-xl border border-slate-700 text-slate-300 hover:text-white transition shadow-sm" title="Configurações e Pessoas">
+                    <i data-lucide="settings" class="w-5 h-5"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Abas de Navegação -->
+        <div class="max-w-6xl mx-auto px-3 sm:px-4 flex gap-2 overflow-x-auto border-t border-slate-800 pt-2 pb-0 scrollbar-none">
+            <button onclick="mudarAba('faturas')" id="btnTabFaturas" class="px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-t-lg transition flex items-center gap-1.5 border-b-2 dynamic-border text-white bg-slate-800/60 whitespace-nowrap">
+                <i data-lucide="file-text" class="w-4 h-4 dynamic-text-sec"></i> Faturas & Extratos
+            </button>
+            <button onclick="mudarAba('proprias')" id="btnTabProprias" class="px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-t-lg transition flex items-center gap-1.5 border-b-2 border-transparent text-slate-400 hover:text-white whitespace-nowrap">
+                <i data-lucide="user" class="w-4 h-4"></i> Meus Gastos (Titular)
+            </button>
+        </div>
+    </header>
+
+    <!-- Conteúdo Principal -->
+    <main class="max-w-6xl mx-auto px-3 sm:px-4 py-4 sm:py-6 flex-1 w-full space-y-4 sm:space-y-6 box-border">
+
+        <!-- ABA 1: FATURAS & DEVEDORES -->
+        <section id="tabFaturas" class="space-y-4 sm:space-y-6 w-full">
+            <div class="bg-white p-3 sm:p-4 rounded-2xl shadow-xs border border-slate-200 flex flex-col gap-3 w-full">
+                <div class="flex items-center justify-between gap-2 w-full">
+                    <span class="text-xs sm:text-sm font-semibold text-slate-600 shrink-0">Mês Referência:</span>
+                    <input type="month" id="filtroMesFatura" class="dynamic-ring border border-slate-300 rounded-xl px-3 py-1.5 text-xs sm:text-sm font-medium text-slate-700 bg-slate-50 focus:ring-2 outline-none w-full sm:w-auto" onchange="renderizarFaturas()">
+                </div>
+                <div class="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 w-full">
+                    <button onclick="mudarMes(-1)" class="px-3 py-2 border border-slate-300 hover:bg-slate-50 rounded-xl text-xs font-semibold text-slate-600 transition shadow-xs text-center">Mês Anterior</button>
+                    <button onclick="mudarMes(1)" class="px-3 py-2 border border-slate-300 hover:bg-slate-50 rounded-xl text-xs font-semibold text-slate-600 transition shadow-xs text-center">Próximo Mês</button>
+                    <button onclick="abrirModalCompra()" class="dynamic-bg text-white px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition shadow-sm col-span-1">
+                        <i data-lucide="plus-circle" class="w-4 h-4"></i> Nova Compra
+                    </button>
+                    <button onclick="abrirModalCompraConjunta()" class="bg-purple-700 hover:bg-purple-800 text-white px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition shadow-sm col-span-1">
+                        <i data-lucide="users" class="w-4 h-4"></i> Compra Conjunta
+                    </button>
+                </div>
+            </div>
+
+            <!-- Cards Resumo -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 w-full" id="resumoFaturaCards">
+                <!-- Preenchido via JS -->
+            </div>
+
+            <!-- Lista de Devedores -->
+            <div class="bg-white rounded-2xl shadow-xs border border-slate-200 overflow-hidden w-full">
+                <div class="p-3 sm:p-4 border-b border-slate-100 bg-slate-50/70 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1">
+                    <h3 class="font-bold text-slate-800 text-xs sm:text-sm flex items-center gap-2">
+                        <i data-lucide="users" class="w-4 h-4 dynamic-text"></i> Extrato por Devedor nesta Fatura
+                    </h3>
+                    <span class="text-[11px] text-slate-400">Apenas pessoas com lançamentos ativos</span>
+                </div>
+                <div id="listaDevedoresFatura" class="divide-y divide-slate-100 w-full">
+                    <!-- Preenchido via JS -->
+                </div>
+            </div>
+        </section>
+
+        <!-- ABA 2: MEUS GASTOS (TITULAR) -->
+        <section id="tabProprias" class="hidden space-y-4 sm:space-y-6 w-full">
+            <div id="bannerTitularDiv" class="dynamic-banner-grad bg-gradient-to-br from-purple-950 to-slate-900 rounded-2xl p-4 sm:p-6 text-white shadow-md flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 transition-all w-full box-border">
+                <div>
+                    <span class="text-[11px] sm:text-xs font-semibold tracking-wider uppercase dynamic-text-sec">Seus Gastos Pessoais na Fatura</span>
+                    <h2 class="text-2xl sm:text-3xl font-extrabold mt-1" id="totalPropriasMes">R$ 0,00</h2>
+                    <p class="text-[11px] sm:text-xs text-slate-400 mt-1">Lançamentos feitos por você no cartão, separados dos demais devedores.</p>
+                </div>
+                <div class="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+                    <div class="dynamic-light-bg border px-3 py-2 rounded-xl text-xs dynamic-text font-bold truncate max-w-[150px]" id="badgeNomeTitularProprio" style="border-color: rgba(255,255,255,0.2); background: rgba(255,255,255,0.1); color: #fff;">
+                        Titular
+                    </div>
+                    <button onclick="abrirModalCompraTitular()" class="bg-white dynamic-text hover:bg-slate-100 px-3.5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-sm shrink-0">
+                        <i data-lucide="plus-circle" class="w-4 h-4"></i> Lançar Gasto
+                    </button>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl shadow-xs border border-slate-200 overflow-hidden w-full">
+                <div class="p-3 sm:p-4 border-b border-slate-100 bg-slate-50/70 font-semibold text-xs sm:text-sm text-slate-700">Detalhes das suas Compras Pessoais</div>
+                <div id="listaComprasProprias" class="divide-y divide-slate-100 w-full">
+                    <!-- Preenchido via JS -->
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- MODAL: CONFIGURAÇÕES E GERENCIAR PESSOAS -->
+    <div id="modalConfig" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs hidden items-center justify-center p-3 sm:p-4 z-50 overflow-y-auto">
+        <div class="bg-white rounded-2xl max-w-lg w-full p-4 sm:p-6 shadow-xl space-y-4 sm:space-y-6 my-auto max-h-[90vh] overflow-y-auto box-border">
+            <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+                <h3 class="text-sm sm:text-base font-bold text-slate-800 flex items-center gap-2">
+                    <i data-lucide="settings" class="w-5 h-5 dynamic-text"></i> Configurações & Pessoas
+                </h3>
+                <button onclick="fecharModalConfig()" class="text-slate-400 hover:text-slate-600 p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+
+            <!-- BACKUP E RESTAURAÇÃO DE DADOS EM JSON -->
+            <div class="bg-slate-50 p-3.5 sm:p-4 rounded-2xl border border-slate-200 space-y-2.5">
+                <div class="flex items-center gap-2.5">
+                    <div class="bg-purple-100 p-2 rounded-xl text-purple-700 shrink-0">
+                        <i data-lucide="database" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h4 class="text-xs font-bold text-slate-800 uppercase tracking-wide">Backup & Restauração (JSON)</h4>
+                        <p class="text-[11px] text-slate-500">Salve seus dados ou carregue em outro aparelho</p>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2 pt-1">
+                    <button type="button" onclick="exportarBackupJson()" class="bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-semibold py-2 px-2.5 rounded-xl text-xs transition flex items-center justify-center gap-1.5 shadow-xs">
+                        <i data-lucide="download" class="w-3.5 h-3.5 text-purple-700"></i> Baixar Backup
+                    </button>
+                    <label class="bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-semibold py-2 px-2.5 rounded-xl text-xs transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer text-center">
+                        <i data-lucide="upload" class="w-3.5 h-3.5 text-purple-700"></i> Restaurar
+                        <input type="file" id="inputArquivoBackup" accept=".json" onchange="importarBackupJson(event)" class="hidden">
+                    </label>
+                </div>
+            </div>
+
+            <form id="formConfigGeral" onsubmit="salvarConfigGeral(event)" class="space-y-3 sm:space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Seu Nome (Titular)</label>
+                    <input type="text" id="cfgNomeTitular" required class="dynamic-ring w-full border border-slate-300 rounded-xl p-2.5 text-xs sm:text-sm focus:ring-2 outline-none bg-slate-50 font-medium">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Dia Virada</label>
+                        <input type="number" min="1" max="31" id="cfgViradaInput" required class="dynamic-ring w-full border border-slate-300 rounded-xl p-2.5 text-xs sm:text-sm focus:ring-2 outline-none bg-slate-50 font-medium">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Dia Vencimento</label>
+                        <input type="number" min="1" max="31" id="cfgVencimentoInput" required class="dynamic-ring w-full border border-slate-300 rounded-xl p-2.5 text-xs sm:text-sm focus:ring-2 outline-none bg-slate-50 font-medium">
+                    </div>
+                </div>
+
+                <button type="submit" class="dynamic-bg w-full text-white font-semibold py-2.5 rounded-xl transition text-xs sm:text-sm shadow-sm">Salvar Configurações</button>
+            </form>
+
+            <div class="border-t border-slate-100 pt-4 space-y-3">
+                <h4 class="font-bold text-slate-800 text-xs sm:text-sm flex items-center gap-2">
+                    <i data-lucide="user-plus" class="w-4 h-4 dynamic-text"></i> Gerenciar Devedores
+                </h4>
+                <form onsubmit="adicionarPessoa(event)" class="flex gap-2">
+                    <input type="text" id="nomeNovaPessoa" placeholder="Nome do devedor" required class="dynamic-ring flex-1 border border-slate-300 rounded-xl px-3 py-2 text-xs sm:text-sm focus:ring-2 outline-none bg-slate-50 font-medium min-w-0">
+                    <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white font-semibold px-3.5 py-2 rounded-xl transition text-xs shrink-0">Adicionar</button>
+                </form>
+                <div id="listaPessoasCadastradas" class="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden max-h-36 overflow-y-auto">
+                    <!-- Preenchido via JS -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: EDITAR DEVEDOR -->
+    <div id="modalEditarPessoa" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs hidden items-center justify-center p-3 sm:p-4 z-[9999]">
+        <div class="bg-white rounded-2xl max-w-sm w-full p-4 sm:p-6 shadow-xl space-y-4 my-auto">
+            <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+                <h3 class="text-sm font-bold text-slate-800">Editar Devedor</h3>
+                <button onclick="fecharModalEditarPessoa()" class="text-slate-400 hover:text-slate-600 p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <form onsubmit="salvarEdicaoPessoa(event)" class="space-y-3">
+                <input type="hidden" id="editPessoaId">
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Novo Nome</label>
+                    <input type="text" id="editPessoaNomeInput" required class="dynamic-ring w-full border border-slate-300 rounded-xl p-2.5 text-xs sm:text-sm focus:ring-2 outline-none bg-slate-50 font-medium">
+                </div>
+                <div class="flex gap-2 pt-2">
+                    <button type="submit" class="dynamic-bg flex-1 text-white font-semibold py-2.5 rounded-xl transition text-xs sm:text-sm">Salvar</button>
+                    <button type="button" onclick="fecharModalEditarPessoa()" class="bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold px-4 py-2.5 rounded-xl transition text-xs sm:text-sm">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: NOVA / EDITAR COMPRA -->
+    <div id="modalCompra" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs hidden items-center justify-center p-3 sm:p-4 z-50 overflow-y-auto">
+        <div class="bg-white rounded-2xl max-w-md w-full p-4 sm:p-6 shadow-xl space-y-4 my-auto max-h-[90vh] overflow-y-auto box-border">
+            <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+                <h3 class="text-sm sm:text-base font-bold text-slate-800" id="tituloFormCompra">Nova Compra</h3>
+                <button onclick="fecharModalCompra()" class="text-slate-400 hover:text-slate-600 p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <form id="formCompra" onsubmit="salvarCompra(event)" class="space-y-3">
+                <input type="hidden" id="editCompraId">
+                <div id="divSelectPessoaCompra">
+                    <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Devedor</label>
+                    <select id="compraPessoa" class="dynamic-ring w-full border border-slate-300 rounded-xl p-2.5 text-xs sm:text-sm focus:ring-2 outline-none bg-slate-50 font-medium">
+                        <!-- Preenchido via JS -->
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Descrição</label>
+                    <input type="text" id="compraDesc" required placeholder="Ex: Uber, Restaurante" class="dynamic-ring w-full border border-slate-300 rounded-xl p-2.5 text-xs sm:text-sm focus:ring-2 outline-none bg-slate-50 font-medium">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Valor Total (R$)</label>
+                        <input type="number" step="0.01" id="compraValor" required placeholder="0,00" class="dynamic-ring w-full border border-slate-300 rounded-xl p-2.5 text-xs sm:text-sm focus:ring-2 outline-none bg-slate-50 font-medium">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Parcelas</label>
+                        <input type="number" min="1" max="48" value="1" id="compraParcelas" required class="dynamic-ring w-full border border-slate-300 rounded-xl p-2.5 text-xs sm:text-sm focus:ring-2 outline-none bg-slate-50 font-medium">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Data da Compra</label>
+                    <input type="date" id="compraData" required class="dynamic-ring w-full border border-slate-300 rounded-xl p-2.5 text-xs sm:text-sm focus:ring-2 outline-none bg-slate-50 font-medium">
+                </div>
+                <div class="flex gap-2 pt-2">
+                    <button type="submit" class="dynamic-bg flex-1 text-white font-semibold py-2.5 rounded-xl transition text-xs sm:text-sm">Salvar</button>
+                    <button type="button" onclick="fecharModalCompra()" class="bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold px-4 py-2.5 rounded-xl transition text-xs sm:text-sm">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: COMPRA CONJUNTA -->
+    <div id="modalCompraConjunta" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs hidden items-center justify-center p-3 sm:p-4 z-50 overflow-y-auto">
+        <div class="bg-white rounded-2xl max-w-lg w-full p-4 sm:p-6 shadow-xl space-y-4 my-auto max-h-[90vh] overflow-y-auto box-border">
+            <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+                <h3 class="text-sm sm:text-base font-bold text-slate-800 flex items-center gap-2">
+                    <i data-lucide="users" class="w-5 h-5 dynamic-text"></i> Lançar Compra Conjunta
+                </h3>
+                <button onclick="fecharModalCompraConjunta()" class="text-slate-400 hover:text-slate-600 p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <form onsubmit="salvarCompraConjunta(event)" class="space-y-3">
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Descrição</label>
+                    <input type="text" id="conjuntaDesc" required placeholder="Ex: Supermercado" class="dynamic-ring w-full border border-slate-300 rounded-xl p-2.5 text-xs sm:text-sm focus:ring-2 outline-none bg-slate-50 font-medium">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Valor Total (R$)</label>
+                        <input type="number" step="0.01" id="conjuntaValorTotal" required placeholder="0,00" oninput="atualizarRestanteConjunta()" class="dynamic-ring w-full border border-slate-300 rounded-xl p-2.5 text-xs sm:text-sm focus:ring-2 outline-none bg-slate-50 font-medium">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Data</label>
+                        <input type="date" id="conjuntaData" required class="dynamic-ring w-full border border-slate-300 rounded-xl p-2.5 text-xs sm:text-sm focus:ring-2 outline-none bg-slate-50 font-medium">
+                    </div>
+                </div>
+
+                <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 flex justify-between items-center text-xs sm:text-sm">
+                    <span class="font-semibold text-slate-600">Valor Restante:</span>
+                    <span id="conjuntaRestanteLabel" class="font-extrabold dynamic-text text-sm sm:text-base">R$ 0,00</span>
+                </div>
+
+                <div class="space-y-2">
+                    <label class="block text-xs font-bold text-slate-600 uppercase">Atribuir Valores por Pessoa:</label>
+                    <div id="listaAtribuicaoConjunta" class="space-y-2 max-h-40 overflow-y-auto pr-1">
+                        <!-- Preenchido via JS -->
+                    </div>
+                </div>
+
+                <div class="flex gap-2 pt-2">
+                    <button type="submit" class="dynamic-bg flex-1 text-white font-semibold py-2.5 rounded-xl transition text-xs sm:text-sm">Salvar</button>
+                    <button type="button" onclick="fecharModalCompraConjunta()" class="bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold px-4 py-2.5 rounded-xl transition text-xs sm:text-sm">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: ENVIAR FATURA -->
+    <div id="modalEnviarFatura" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs hidden items-center justify-center p-3 sm:p-4 z-50 overflow-y-auto">
+        <div class="bg-white rounded-2xl max-w-md w-full p-4 sm:p-6 shadow-xl space-y-4 my-auto max-h-[90vh] overflow-y-auto box-border">
+            <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+                <h3 class="text-sm sm:text-base font-bold text-slate-800 flex items-center gap-2">
+                    <i data-lucide="share-2" class="w-5 h-5 dynamic-text"></i> Enviar Fatura
+                </h3>
+                <button onclick="fecharModalEnviarFatura()" class="text-slate-400 hover:text-slate-600 p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            
+            <div id="cartaoExtratoExportar" class="bg-slate-900 text-white p-4 sm:p-5 rounded-2xl space-y-3 shadow-md font-sans w-full box-border overflow-hidden">
+                <div class="flex justify-between items-center border-b border-slate-800 pb-3 gap-2">
+                    <div class="min-w-0">
+                        <p class="text-[11px] dynamic-text-sec font-bold uppercase tracking-wider">Fatura do Cartão</p>
+                        <h4 class="text-base sm:text-lg font-extrabold text-white truncate" id="extratoPessoaNome">Nome</h4>
+                    </div>
+                    <div class="text-right shrink-0">
+                        <p class="text-[11px] text-slate-400">Referência</p>
+                        <p class="text-xs sm:text-sm font-bold dynamic-text-sec" id="extratoMesAnoLabel">2026-11</p>
+                    </div>
+                </div>
+                <div class="space-y-1.5 text-xs max-h-40 overflow-y-auto" id="extratoItensLista"></div>
+                <div class="border-t border-slate-800 pt-2.5 space-y-1 text-xs">
+                    <div class="flex justify-between text-slate-300">
+                        <span>Gastos do Mês:</span>
+                        <span id="extratoTotalGastos" class="font-semibold">R$ 0,00</span>
+                    </div>
+                    <div class="flex justify-between text-slate-300" id="extratoSaldoAnteriorRow">
+                        <span>Saldo Anterior:</span>
+                        <span id="extratoSaldoAnterior" class="font-semibold">R$ 0,00</span>
+                    </div>
+                    <div class="flex justify-between text-slate-300">
+                        <span>Valor Pago:</span>
+                        <span id="extratoTotalPago" class="font-semibold text-emerald-400">R$ 0,00</span>
+                    </div>
+                    <div class="flex justify-between text-sm sm:text-base font-extrabold text-white pt-2 border-t border-slate-800">
+                        <span>Total Pendente:</span>
+                        <span id="extratoTotalPendente" class="dynamic-text-sec">R$ 0,00</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex gap-2 pt-1">
+                <button type="button" onclick="compartilharFaturaComoImagem()" id="btnCompartilharImg" class="dynamic-bg flex-1 text-white font-semibold py-2.5 px-3 rounded-xl transition text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-sm">
+                    <i data-lucide="share-2" class="w-4 h-4"></i> Compartilhar Fatura
+                </button>
+                <button type="button" onclick="fecharModalEnviarFatura()" class="bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold px-4 py-2.5 rounded-xl transition text-xs sm:text-sm">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: PAGAMENTO -->
+    <div id="modalPagamento" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs hidden items-center justify-center p-3 sm:p-4 z-50 overflow-y-auto">
+        <div class="bg-white rounded-2xl max-w-md w-full p-4 sm:p-6 shadow-xl space-y-4 my-auto max-h-[90vh] overflow-y-auto box-border">
+            <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+                <h3 class="text-sm sm:text-base font-bold text-slate-800 truncate pr-2" id="modalTituloPagamento">Registrar Pagamento</h3>
+                <button onclick="fecharModalPagamento()" class="text-slate-400 hover:text-slate-600 p-1 shrink-0"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <form id="formPagamento" onsubmit="salvarPagamento(event)" class="space-y-3">
+                <input type="hidden" id="pagPessoaId">
+                <input type="hidden" id="pagMesAno">
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Valor Pago (R$)</label>
+                    <input type="number" step="0.01" id="pagValor" required class="dynamic-ring w-full border border-slate-300 rounded-xl p-2.5 text-xs sm:text-sm focus:ring-2 outline-none bg-slate-50 font-medium">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Data do Pagamento</label>
+                    <input type="date" id="pagData" required class="dynamic-ring w-full border border-slate-300 rounded-xl p-2.5 text-xs sm:text-sm focus:ring-2 outline-none bg-slate-50 font-medium">
+                </div>
+                <div class="flex gap-2 pt-2">
+                    <button type="submit" class="dynamic-bg flex-1 text-white font-semibold py-2.5 rounded-xl transition text-xs sm:text-sm">Confirmar</button>
+                    <button type="button" onclick="fecharModalPagamento()" class="bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold px-4 py-2.5 rounded-xl transition text-xs sm:text-sm">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: ANTECIPAÇÃO -->
+    <div id="modalAntecipacao" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs hidden items-center justify-center p-3 sm:p-4 z-50 overflow-y-auto">
+        <div class="bg-white rounded-2xl max-w-md w-full p-4 sm:p-6 shadow-xl space-y-4 my-auto max-h-[90vh] overflow-y-auto box-border">
+            <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+                <h3 class="text-sm sm:text-base font-bold text-slate-800">Antecipar Parcela com Desconto</h3>
+                <button onclick="fecharModalAntecipacao()" class="text-slate-400 hover:text-slate-600 p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <form id="formAntecipacao" onsubmit="salvarAntecipacaoCompra(event)" class="space-y-3">
+                <input type="hidden" id="antCompraId">
+                <input type="hidden" id="antMesAno">
+                <div>
+                    <p class="text-xs text-slate-600 mb-2 font-medium" id="antDescricaoInfo"></p>
+                    <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Quantidade a Antecipar</label>
+                    <input type="number" min="1" value="1" id="antQtdParcelas" required class="dynamic-ring w-full border border-slate-300 rounded-xl p-2.5 text-xs sm:text-sm focus:ring-2 outline-none bg-slate-50 font-medium mb-3">
+                    
+                    <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Desconto Total (R$)</label>
+                    <input type="number" step="0.01" id="antDescontoValor" required placeholder="0,00" class="dynamic-ring w-full border border-slate-300 rounded-xl p-2.5 text-xs sm:text-sm focus:ring-2 outline-none bg-slate-50 font-medium">
+                </div>
+                <div class="flex gap-2 pt-2">
+                    <button type="submit" class="dynamic-bg flex-1 text-white font-semibold py-2.5 rounded-xl transition text-xs sm:text-sm">Confirmar</button>
+                    <button type="button" onclick="fecharModalAntecipacao()" class="bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold px-4 py-2.5 rounded-xl transition text-xs sm:text-sm">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: EXCLUSÃO DE PESSOA -->
+    <div id="modalConfirmacaoExclusaoPessoa" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs hidden items-center justify-center p-3 sm:p-4 z-[9999]">
+        <div class="bg-white rounded-2xl max-w-sm w-full p-5 sm:p-6 shadow-2xl space-y-4 text-center border border-slate-100">
+            <input type="hidden" id="delPessoaId">
+            <div class="bg-rose-50 text-rose-600 w-12 h-12 rounded-full flex items-center justify-center mx-auto">
+                <i data-lucide="user-x" class="w-6 h-6"></i>
+            </div>
+            <h3 class="text-base font-bold text-slate-800">Excluir Devedor</h3>
+            <p class="text-xs text-slate-500">Tem certeza que deseja remover esta pessoa e todas as compras associadas?</p>
+            <div class="flex gap-2 pt-2">
+                <button type="button" onclick="confirmarExclusaoPessoa()" class="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-semibold py-2.5 rounded-xl transition text-xs sm:text-sm shadow-sm">Sim, Excluir</button>
+                <button type="button" onclick="fecharModalExclusaoPessoa()" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold py-2.5 rounded-xl transition text-xs sm:text-sm">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: EXCLUSÃO DE COMPRA -->
+    <div id="modalConfirmacaoExclusao" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs hidden items-center justify-center p-3 sm:p-4 z-[9999]">
+        <div class="bg-white rounded-2xl max-w-sm w-full p-5 sm:p-6 shadow-2xl space-y-4 text-center border border-slate-100">
+            <input type="hidden" id="delCompraId">
+            <div class="bg-rose-50 text-rose-600 w-12 h-12 rounded-full flex items-center justify-center mx-auto">
+                <i data-lucide="alert-triangle" class="w-6 h-6"></i>
+            </div>
+            <h3 class="text-base font-bold text-slate-800">Excluir Compra</h3>
+            <p class="text-xs text-slate-500">Tem certeza que deseja remover esta compra permanentemente?</p>
+            <div class="flex gap-2 pt-2">
+                <button type="button" onclick="confirmarExclusaoCompra()" class="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-semibold py-2.5 rounded-xl transition text-xs sm:text-sm shadow-sm">Sim, Excluir</button>
+                <button type="button" onclick="fecharModalExclusao()" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold py-2.5 rounded-xl transition text-xs sm:text-sm">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE MENSAGEM / ALERTA PERSONALIZADO -->
+    <div id="modalMensagemCustom" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs hidden items-center justify-center p-3 sm:p-4 z-[10000]">
+        <div class="bg-white rounded-2xl max-w-sm w-full p-5 sm:p-6 shadow-2xl space-y-4 text-center border border-slate-100">
+            <div class="dynamic-light-bg dynamic-text w-12 h-12 rounded-full flex items-center justify-center mx-auto">
+                <i data-lucide="info" class="w-6 h-6"></i>
+            </div>
+            <h3 class="text-base font-bold text-slate-800" id="msgCustomTitulo">Aviso</h3>
+            <p class="text-xs text-slate-600" id="msgCustomTexto"></p>
+            <div class="pt-2">
+                <button type="button" onclick="fecharMensagemCustom()" class="dynamic-bg w-full text-white font-semibold py-2.5 rounded-xl transition text-xs sm:text-sm shadow-sm">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script Principal -->
+    <script>
+        let callbackMensagemCustom = null;
+
+        function mostrarMensagem(texto, titulo = 'Aviso', callback = null) {
+            document.getElementById('msgCustomTitulo').textContent = titulo;
+            document.getElementById('msgCustomTexto').textContent = texto;
+            callbackMensagemCustom = callback;
+            const modal = document.getElementById('modalMensagemCustom');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            lucide.createIcons();
+        }
+
+        function fecharMensagemCustom() {
+            const modal = document.getElementById('modalMensagemCustom');
+            modal.classList.remove('flex');
+            modal.classList.add('hidden');
+            if (callbackMensagemCustom) {
+                const cb = callbackMensagemCustom;
+                callbackMensagemCustom = null;
+                cb();
+            }
+        }
+
+        let dados = JSON.parse(localStorage.getItem('cartao_dados')) || {
+            config: { virada: 10, vencimento: 17, nomeTitular: 'Seu Nome' },
+            pessoas: [
+                { id: 'titular', nome: 'Seu Nome (Titular)', titular: true }
+            ],
+            compras: [],
+            pagamentos: [],
+            antecipacoes: []
+        };
+
+        let titularObj = dados.pessoas.find(p => p.titular);
+        if (!titularObj) {
+            dados.pessoas.unshift({ id: 'titular', nome: (dados.config.nomeTitular || 'Seu Nome') + ' (Titular)', titular: true });
+        } else {
+            if(!dados.config.nomeTitular) dados.config.nomeTitular = titularObj.nome.replace(' (Titular)', '');
+        }
+
+        document.getElementById('cfgNomeTitular').value = dados.config.nomeTitular;
+        document.getElementById('cfgViradaInput').value = dados.config.virada;
+        document.getElementById('cfgVencimentoInput').value = dados.config.vencimento;
+        document.getElementById('lblVirada').textContent = dados.config.virada;
+        document.getElementById('lblVencimento').textContent = dados.config.vencimento;
+        document.getElementById('headerTitularSub').textContent = `Titular: ${dados.config.nomeTitular}`;
+        document.getElementById('badgeNomeTitularProprio').textContent = `Titular: ${dados.config.nomeTitular}`;
+
+        const hoje = new Date();
+        const mesAtualStr = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
+        document.getElementById('filtroMesFatura').value = mesAtualStr;
+        document.getElementById('pagData').value = hoje.toISOString().split('T')[0];
+
+        renderizarFaturas();
+        lucide.createIcons();
+
+        function salvarDados() {
+            localStorage.setItem('cartao_dados', JSON.stringify(dados));
+        }
+
+        function exportarBackupJson() {
+            const dadosStr = JSON.stringify(dados, null, 2);
+            const blob = new Blob([dadosStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `backup_cartao_${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function importarBackupJson(event) {
+            const arquivo = event.target.files[0];
+            if (!arquivo) return;
+            const leitor = new FileReader();
+            leitor.onload = function(e) {
+                try {
+                    const dadosImportados = JSON.parse(e.target.result);
+                    if (dadosImportados && dadosImportados.config && dadosImportados.pessoas) {
+                        dados = dadosImportados;
+                        salvarDados();
+                        mostrarMensagem('Backup restaurado com sucesso! A página será atualizada.', 'Sucesso', () => {
+                            location.reload();
+                        });
+                    } else {
+                        mostrarMensagem('O arquivo selecionado não possui um formato de backup válido.', 'Erro');
+                    }
+                } catch (err) {
+                    mostrarMensagem('Erro ao ler o arquivo JSON.', 'Erro');
+                }
+            };
+            leitor.readAsText(arquivo);
+        }
+
+        function mudarAba(aba) {
+            ['Faturas', 'Proprias'].forEach(a => {
+                const el = document.getElementById(`tab${a}`);
+                const btn = document.getElementById(`btnTab${a}`);
+                if (a.toLowerCase() === aba.toLowerCase()) {
+                    el.classList.remove('hidden');
+                    btn.classList.add('dynamic-border', 'text-white', 'bg-slate-800/60');
+                    btn.classList.remove('border-transparent', 'text-slate-400');
+                } else {
+                    el.classList.add('hidden');
+                    btn.classList.remove('dynamic-border', 'text-white', 'bg-slate-800/60');
+                    btn.classList.add('border-transparent', 'text-slate-400');
+                }
+            });
+
+            if(aba === 'faturas') renderizarFaturas();
+            if(aba === 'proprias') renderizarProprias();
+            lucide.createIcons();
+        }
+
+        function abrirModalConfig() {
+            document.getElementById('cfgNomeTitular').value = dados.config.nomeTitular;
+            document.getElementById('cfgViradaInput').value = dados.config.virada;
+            document.getElementById('cfgVencimentoInput').value = dados.config.vencimento;
+            renderizarListaPessoasModal();
+            const modal = document.getElementById('modalConfig');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            lucide.createIcons();
+        }
+
+        function fecharModalConfig() {
+            const modal = document.getElementById('modalConfig');
+            modal.classList.remove('flex');
+            modal.classList.add('hidden');
+        }
+
+        function salvarConfigGeral(e) {
+            e.preventDefault();
+            const nome = document.getElementById('cfgNomeTitular').value.trim();
+            const virada = parseInt(document.getElementById('cfgViradaInput').value) || 10;
+            const vencimento = parseInt(document.getElementById('cfgVencimentoInput').value) || 17;
+
+            dados.config.nomeTitular = nome;
+            dados.config.virada = virada;
+            dados.config.vencimento = vencimento;
+
+            let tit = dados.pessoas.find(p => p.titular);
+            if(tit) tit.nome = `${nome} (Titular)`;
+
+            salvarDados();
+            
+            document.getElementById('lblVirada').textContent = virada;
+            document.getElementById('lblVencimento').textContent = vencimento;
+            document.getElementById('headerTitularSub').textContent = `Titular: ${nome}`;
+            document.getElementById('badgeNomeTitularProprio').textContent = `Titular: ${nome}`;
+
+            fecharModalConfig();
+            renderizarFaturas();
+            mostrarMensagem('Configurações salvas com sucesso!', 'Sucesso');
+        }
+
+        function adicionarPessoa(e) {
+            e.preventDefault();
+            const input = document.getElementById('nomeNovaPessoa');
+            const nome = input.value.trim();
+            if(!nome) return;
+            dados.pessoas.push({ id: Date.now().toString(), nome, titular: false });
+            salvarDados();
+            input.value = '';
+            renderizarListaPessoasModal();
+            renderizarFaturas();
+        }
+
+        function abrirModalEditarPessoa(id, nomeAtual) {
+            document.getElementById('editPessoaId').value = id;
+            document.getElementById('editPessoaNomeInput').value = nomeAtual;
+            const modal = document.getElementById('modalEditarPessoa');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function fecharModalEditarPessoa() {
+            const modal = document.getElementById('modalEditarPessoa');
+            modal.classList.remove('flex');
+            modal.classList.add('hidden');
+        }
+
+        function salvarEdicaoPessoa(e) {
+            e.preventDefault();
+            const id = document.getElementById('editPessoaId').value;
+            const novoNome = document.getElementById('editPessoaNomeInput').value.trim();
+            if(!novoNome) return;
+
+            const p = dados.pessoas.find(x => String(x.id) === String(id));
+            if(p) {
+                p.nome = novoNome;
+                salvarDados();
+                fecharModalEditarPessoa();
+                renderizarListaPessoasModal();
+                renderizarFaturas();
+            }
+        }
+
+        function excluirPessoa(id) {
+            const p = dados.pessoas.find(x => x.id === id);
+            if(p && p.titular) { mostrarMensagem('Não é possível remover o titular.', 'Aviso'); return; }
+            fecharModalConfig();
+            document.getElementById('delPessoaId').value = id;
+            const modal = document.getElementById('modalConfirmacaoExclusaoPessoa');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            lucide.createIcons();
+        }
+
+        function fecharModalExclusaoPessoa() {
+            const modal = document.getElementById('modalConfirmacaoExclusaoPessoa');
+            modal.classList.remove('flex');
+            modal.classList.add('hidden');
+        }
+
+        function confirmarExclusaoPessoa() {
+            const id = document.getElementById('delPessoaId').value;
+            dados.pessoas = dados.pessoas.filter(x => String(x.id) !== String(id));
+            dados.compras = dados.compras.filter(x => String(x.pessoaId) !== String(id));
+            salvarDados();
+            fecharModalExclusaoPessoa();
+            renderizarFaturas();
+        }
+
+        function renderizarListaPessoasModal() {
+            const container = document.getElementById('listaPessoasCadastradas');
+            container.innerHTML = '';
+            let pessoasOrdenadas = [...dados.pessoas].sort((a, b) => a.nome.localeCompare(b.nome));
+            pessoasOrdenadas.forEach(p => {
+                container.innerHTML += `
+                    <div class="p-2.5 flex justify-between items-center text-xs sm:text-sm bg-white gap-2">
+                        <span class="font-medium text-slate-700 truncate">${p.nome} ${p.titular ? '<span class="text-[10px] dynamic-light-bg dynamic-text px-1.5 py-0.5 rounded-md ml-1 font-semibold">Titular</span>' : ''}</span>
+                        <div class="flex items-center gap-1.5 shrink-0">
+                            ${!p.titular ? `<button type="button" onclick="abrirModalEditarPessoa('${p.id}', '${p.nome.replace(/'/g, "\\'")}')" class="dynamic-text hover:underline text-xs font-semibold">Editar</button>` : ''}
+                            ${!p.titular ? `<button type="button" onclick="excluirPessoa('${p.id}')" class="text-rose-600 hover:text-rose-800 text-xs font-semibold">Excluir</button>` : ''}
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        function atualizarSelectDevedores(selecionadoId = '') {
+            const select = document.getElementById('compraPessoa');
+            select.innerHTML = '';
+            let devedoresOrd = dados.pessoas.filter(p => !p.titular).sort((a, b) => a.nome.localeCompare(b.nome));
+            devedoresOrd.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                opt.textContent = p.nome;
+                if(p.id === selecionadoId) opt.selected = true;
+                select.appendChild(opt);
+            });
+        }
+
+        function abrirModalCompra() {
+            const devedores = dados.pessoas.filter(p => !p.titular);
+            if(devedores.length === 0) {
+                mostrarMensagem('Cadastre ao menos um devedor nas Configurações (⚙️) antes de lançar compras.', 'Atenção', () => {
+                    abrirModalConfig();
+                });
+                return;
+            }
+            document.getElementById('editCompraId').value = '';
+            document.getElementById('tituloFormCompra').textContent = "Nova Compra";
+            document.getElementById('formCompra').reset();
+            document.getElementById('compraData').value = new Date().toISOString().split('T')[0];
+            document.getElementById('compraParcelas').value = 1;
+            document.getElementById('divSelectPessoaCompra').style.display = 'block';
+            atualizarSelectDevedores();
+
+            const modal = document.getElementById('modalCompra');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function abrirModalCompraTitular() {
+            document.getElementById('editCompraId').value = '';
+            document.getElementById('tituloFormCompra').textContent = "Lançar Gasto Próprio";
+            document.getElementById('formCompra').reset();
+            document.getElementById('compraData').value = new Date().toISOString().split('T')[0];
+            document.getElementById('compraParcelas').value = 1;
+            document.getElementById('divSelectPessoaCompra').style.display = 'none';
+
+            const modal = document.getElementById('modalCompra');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function fecharModalCompra() {
+            const modal = document.getElementById('modalCompra');
+            modal.classList.remove('flex');
+            modal.classList.add('hidden');
+        }
+
+        function abrirModalCompraConjunta() {
+            document.getElementById('conjuntaDesc').value = '';
+            document.getElementById('conjuntaValorTotal').value = '';
+            document.getElementById('conjuntaData').value = new Date().toISOString().split('T')[0];
+            renderizarInputsCompraConjunta();
+            atualizarRestanteConjunta();
+
+            const modal = document.getElementById('modalCompraConjunta');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            lucide.createIcons();
+        }
+
+        function fecharModalCompraConjunta() {
+            const modal = document.getElementById('modalCompraConjunta');
+            modal.classList.remove('flex');
+            modal.classList.add('hidden');
+        }
+
+        function renderizarInputsCompraConjunta() {
+            const container = document.getElementById('listaAtribuicaoConjunta');
+            container.innerHTML = '';
+            let pessoasOrd = [...dados.pessoas].sort((a, b) => a.nome.localeCompare(b.nome));
+            pessoasOrd.forEach(p => {
+                container.innerHTML += `
+                    <div class="flex items-center justify-between gap-2 bg-white p-2 rounded-xl border border-slate-200">
+                        <span class="text-xs sm:text-sm font-medium text-slate-700 truncate flex-1">${p.nome} ${p.titular ? '(Você)' : ''}</span>
+                        <div class="flex items-center gap-1.5 shrink-0">
+                            <input type="number" step="0.01" placeholder="0,00" data-pessoa-id="${p.id}" oninput="atualizarRestanteConjunta()" class="dynamic-ring input-conjunta w-24 border border-slate-300 rounded-lg p-1.5 text-xs font-medium outline-none text-right bg-slate-50">
+                            <button type="button" onclick="atribuirRestantePara('${p.id}')" class="text-[10px] dynamic-light-bg dynamic-text font-semibold px-2 py-1.5 rounded-lg border border-slate-200" title="Atribuir restante">Restante</button>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        function atualizarRestanteConjunta() {
+            const totalVal = parseFloat(document.getElementById('conjuntaValorTotal').value) || 0;
+            let atribuido = 0;
+            document.querySelectorAll('.input-conjunta').forEach(inp => {
+                atribuido += parseFloat(inp.value) || 0;
+            });
+            let restante = totalVal - atribuido;
+            const lbl = document.getElementById('conjuntaRestanteLabel');
+            lbl.textContent = formatarMoeda(restante);
+            if (restante < 0) {
+                lbl.className = 'font-extrabold text-rose-600 text-sm sm:text-base';
+            } else {
+                lbl.className = 'font-extrabold dynamic-text text-sm sm:text-base';
+            }
+        }
+
+        function atribuirRestantePara(pId) {
+            const totalVal = parseFloat(document.getElementById('conjuntaValorTotal').value) || 0;
+            let atribuidoOutros = 0;
+            document.querySelectorAll('.input-conjunta').forEach(inp => {
+                if (inp.getAttribute('data-pessoa-id') !== pId) {
+                    atribuidoOutros += parseFloat(inp.value) || 0;
+                }
+            });
+            let restante = totalVal - atribuidoOutros;
+            if (restante < 0) restante = 0;
+
+            const alvoInput = document.querySelector(`.input-conjunta[data-pessoa-id="${pId}"]`);
+            if (alvoInput) {
+                alvoInput.value = restante.toFixed(2);
+                atualizarRestanteConjunta();
+            }
+        }
+
+        function salvarCompraConjunta(e) {
+            e.preventDefault();
+            const descricao = document.getElementById('conjuntaDesc').value;
+            const data = document.getElementById('conjuntaData').value;
+            const valorTotal = parseFloat(document.getElementById('conjuntaValorTotal').value) || 0;
+
+            let atribuicoes = [];
+            let somaAtribuida = 0;
+            document.querySelectorAll('.input-conjunta').forEach(inp => {
+                const val = parseFloat(inp.value) || 0;
+                if (val > 0) {
+                    atribuicoes.push({ pessoaId: inp.getAttribute('data-pessoa-id'), valor: val });
+                    somaAtribuida += val;
+                }
+            });
+
+            if (atribuicoes.length === 0) { mostrarMensagem('Atribua valor a pelo menos uma pessoa.', 'Atenção'); return; }
+            if (Math.abs(somaAtribuida - valorTotal) > 0.05) { mostrarMensagem('A soma dos valores atribuídos deve ser igual ao total.', 'Atenção'); return; }
+
+            atribuicoes.forEach(atrib => {
+                dados.compras.push({
+                    id: Date.now().toString() + Math.random().toString(36).substr(2, 4),
+                    pessoaId: atrib.pessoaId,
+                    descricao: `${descricao} (Conjunta)`,
+                    valorTotal: atrib.valor,
+                    data: data,
+                    parcelas: 1
+                });
+            });
+
+            salvarDados();
+            fecharModalCompraConjunta();
+            renderizarFaturas();
+            renderizarProprias();
+        }
+
+        function salvarCompra(e) {
+            e.preventDefault();
+            const id = document.getElementById('editCompraId').value;
+            const titular = dados.pessoas.find(p => p.titular);
+            const divVisivel = document.getElementById('divSelectPessoaCompra').style.display !== 'none';
+            const pessoaId = divVisivel ? document.getElementById('compraPessoa').value : titular.id;
+
+            const compraObj = {
+                id: id ? id : Date.now().toString(),
+                pessoaId: pessoaId,
+                descricao: document.getElementById('compraDesc').value,
+                valorTotal: parseFloat(document.getElementById('compraValor').value),
+                data: document.getElementById('compraData').value,
+                parcelas: parseInt(document.getElementById('compraParcelas').value)
+            };
+
+            if (id) {
+                dados.compras = dados.compras.map(c => c.id === id ? compraObj : c);
+            } else {
+                dados.compras.push(compraObj);
+            }
+
+            salvarDados();
+            fecharModalCompra();
+            renderizarFaturas();
+            renderizarProprias();
+        }
+
+        function editarCompra(id) {
+            const c = dados.compras.find(x => String(x.id) === String(id));
+            if (!c) return;
+            const titular = dados.pessoas.find(p => p.titular);
+
+            document.getElementById('editCompraId').value = c.id;
+            document.getElementById('compraDesc').value = c.descricao;
+            document.getElementById('compraValor').value = c.valorTotal;
+            document.getElementById('compraData').value = c.data;
+            document.getElementById('compraParcelas').value = c.parcelas;
+            document.getElementById('tituloFormCompra').textContent = "Editar Compra";
+
+            if (c.pessoaId === titular.id) {
+                document.getElementById('divSelectPessoaCompra').style.display = 'none';
+            } else {
+                document.getElementById('divSelectPessoaCompra').style.display = 'block';
+                atualizarSelectDevedores(c.pessoaId);
+            }
+
+            const modal = document.getElementById('modalCompra');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function excluirCompra(id) {
+            document.getElementById('delCompraId').value = id;
+            const modal = document.getElementById('modalConfirmacaoExclusao');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            lucide.createIcons();
+        }
+
+        function fecharModalExclusao() {
+            const modal = document.getElementById('modalConfirmacaoExclusao');
+            modal.classList.remove('flex');
+            modal.classList.add('hidden');
+        }
+
+        function confirmarExclusaoCompra() {
+            const id = document.getElementById('delCompraId').value;
+            dados.compras = dados.compras.filter(c => String(c.id) !== String(id));
+            dados.antecipacoes = dados.antecipacoes.filter(a => String(a.compraId) !== String(id));
+            salvarDados();
+            fecharModalExclusao();
+            renderizarFaturas();
+            renderizarProprias();
+        }
+
+        function obterMesFaturaDeUmaData(dataStr, diaVirada) {
+            const data = new Date(dataStr + 'T00:00:00');
+            let ano = data.getFullYear();
+            let mes = data.getMonth() + 1;
+            let dia = data.getDate();
+            if (dia >= diaVirada) {
+                mes++;
+                if (mes > 12) { mes = 1; ano++; }
+            }
+            return `${ano}-${String(mes).padStart(2, '0')}`;
+        }
+
+        function somarMeses(mesAnoStr, qtd) {
+            let [ano, mes] = mesAnoStr.split('-').map(Number);
+            mes += qtd;
+            while (mes > 12) { mes -= 12; ano++; }
+            while (mes < 1) { mes += 12; ano--; }
+            return `${ano}-${String(mes).padStart(2, '0')}`;
+        }
+
+        function obterDataVencimentoFatura(mesAnoStr, diaVencimento) {
+            let [ano, mes] = mesAnoStr.split('-').map(Number);
+            return new Date(ano, mes - 1, diaVencimento);
+        }
+
+        function formatarMoeda(val) {
+            return val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        }
+
+        function mudarMes(qtd) {
+            const input = document.getElementById('filtroMesFatura');
+            input.value = somarMeses(input.value, qtd);
+            renderizarFaturas();
+        }
+
+        function calcularCronogramaCompra(c, virada) {
+            const mesInicial = obterMesFaturaDeUmaData(c.data, virada);
+            const totalCentavos = Math.round(c.valorTotal * 100);
+            const valorBaseCentavos = Math.floor(totalCentavos / c.parcelas);
+            const restoCentavos = totalCentavos % c.parcelas;
+            
+            let parcelas = [];
+            for (let i = 0; i < c.parcelas; i++) {
+                const centavosDestaParcela = valorBaseCentavos + (i < restoCentavos ? 1 : 0);
+                parcelas.push({
+                    nOriginal: i + 1,
+                    mes: somarMeses(mesInicial, i),
+                    valor: centavosDestaParcela / 100,
+                    antecipadaDe: null,
+                    desconto: 0
+                });
+            }
+
+            let ants = dados.antecipacoes.filter(a => String(a.compraId) === String(c.id));
+            ants.forEach(ant => {
+                for (let q = 0; q < ant.qtd; q++) {
+                    let ultimaAtivaIndex = -1;
+                    for (let p = parcelas.length - 1; p >= 0; p--) {
+                        if (!parcelas[p].removida && !parcelas[p].antecipadaDe && parcelas[p].mes > ant.mesDestino) {
+                            ultimaAtivaIndex = p;
+                            break;
+                        }
+                    }
+
+                    if (ultimaAtivaIndex !== -1) {
+                        parcelas[ultimaAtivaIndex].removida = true;
+                        parcelas.push({
+                            nOriginal: parcelas[ultimaAtivaIndex].nOriginal,
+                            mes: ant.mesDestino,
+                            valor: parcelas[ultimaAtivaIndex].valor - (q === 0 ? ant.desconto : 0),
+                            antecipadaDe: parcelas[ultimaAtivaIndex].mes,
+                            desconto: q === 0 ? ant.desconto : 0
+                        });
+                    }
+                }
+            });
+
+            return parcelas.filter(p => !p.removida);
+        }
+
+        function calcularDadosDevedorMes(pId, mesAno) {
+            const virada = dados.config.virada;
+            const vencimentoDia = dados.config.vencimento;
+            const dataHoje = new Date();
+
+            let totalGastos = 0;
+            let comprasDoMes = [];
+
+            dados.compras.forEach(c => {
+                if (c.pessoaId === pId) {
+                    let cronograma = calcularCronogramaCompra(c, virada);
+                    cronograma.forEach(p => {
+                        if (p.mes === mesAno) {
+                            totalGastos += p.valor;
+                            comprasDoMes.push({
+                                ...c,
+                                parcelaAtual: p.nOriginal,
+                                totalParcelas: c.parcelas,
+                                valorParcela: p.valor,
+                                descontoAplicado: p.desconto,
+                                antecipada: !!p.antecipadaDe
+                            });
+                        }
+                    });
+                }
+            });
+
+            let todasComprasPessoa = dados.compras.filter(c => c.pessoaId === pId);
+            let saldoAcumulado = 0;
+
+            if (todasComprasPessoa.length > 0) {
+                let minMes = todasComprasPessoa.reduce((menor, c) => {
+                    let m = obterMesFaturaDeUmaData(c.data, virada);
+                    return m < menor ? m : menor;
+                }, mesAno);
+
+                let mesCorrido = minMes;
+
+                while (mesCorrido < mesAno) {
+                    let gastoMes = 0;
+                    dados.compras.forEach(c => {
+                        if(c.pessoaId === pId) {
+                            let crono = calcularCronogramaCompra(c, virada);
+                            crono.forEach(p => {
+                                if(p.mes === mesCorrido) gastoMes += p.valor;
+                            });
+                        }
+                    });
+
+                    let pag = dados.pagamentos.find(p => p.pessoaId === pId && p.mesAno === mesCorrido);
+                    let pagoMes = pag ? pag.valorPago : 0;
+                    let dataVencObj = obterDataVencimentoFatura(mesCorrido, vencimentoDia);
+
+                    let totalDevidoMes = gastoMes + saldoAcumulado;
+                    let diferenca = pagoMes - totalDevidoMes;
+
+                    if (diferenca >= -1.00 && diferenca < 0) diferenca = 0;
+
+                    if (dataHoje > dataVencObj && diferenca < -0.05) {
+                        saldoAcumulado = Math.abs(diferenca);
+                    } else {
+                        saldoAcumulado = 0;
+                    }
+
+                    mesCorrido = somarMeses(mesCorrido, 1);
+                }
+            }
+
+            let pagAtual = dados.pagamentos.find(p => p.pessoaId === pId && p.mesAno === mesAno);
+            let pago = pagAtual ? pagAtual.valorPago : 0;
+
+            let saldoAnterior = saldoAcumulado > 0 ? saldoAcumulado : 0;
+            let totalDevidoComSaldo = totalGastos + saldoAnterior;
+
+            return { totalGastos, comprasDoMes, saldoAnterior, pago, totalDevidoComSaldo };
+        }
+
+        function renderizarFaturas() {
+            const mesAno = document.getElementById('filtroMesFatura').value;
+            if(!mesAno) return;
+
+            let devedoresTotaisMes = {};
+            dados.pessoas.filter(p => !p.titular).forEach(p => {
+                let calc = calcularDadosDevedorMes(p.id, mesAno);
+                if (calc.totalGastos > 0 || calc.saldoAnterior > 0 || calc.pago > 0) {
+                    devedoresTotaisMes[p.id] = { nome: p.nome, ...calc };
+                }
+            });
+
+            let somaTotalGastosDevedores = 0;
+            let somaTotalRecebido = 0;
+            Object.values(devedoresTotaisMes).forEach(d => {
+                somaTotalGastosDevedores += d.totalDevidoComSaldo;
+                somaTotalRecebido += d.pago;
+            });
+
+            document.getElementById('resumoFaturaCards').innerHTML = `
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                    <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Devedores</p>
+                    <p class="text-xl sm:text-2xl font-extrabold text-slate-800 mt-1">${formatarMoeda(somaTotalGastosDevedores)}</p>
+                </div>
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                    <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Recebido</p>
+                    <p class="text-xl sm:text-2xl font-extrabold text-emerald-600 mt-1">${formatarMoeda(somaTotalRecebido)}</p>
+                </div>
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                    <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Pendente Geral</p>
+                    <p class="text-xl sm:text-2xl font-extrabold dynamic-text mt-1">${formatarMoeda(somaTotalGastosDevedores - somaTotalRecebido)}</p>
+                </div>
+            `;
+
+            const container = document.getElementById('listaDevedoresFatura');
+            container.innerHTML = '';
+
+            const devedoresIds = Object.keys(devedoresTotaisMes).sort((a, b) => devedoresTotaisMes[a].nome.localeCompare(devedoresTotaisMes[b].nome));
+
+            if (devedoresIds.length === 0) {
+                container.innerHTML = `<div class="p-6 text-center text-slate-400 text-xs sm:text-sm">Nenhum devedor com contas nesta fatura.</div>`;
+                return;
+            }
+
+            devedoresIds.forEach(pId => {
+                const d = devedoresTotaisMes[pId];
+                let diferenca = d.pago - d.totalDevidoComSaldo;
+                if (diferenca >= -1.00 && diferenca < 0) diferenca = 0;
+
+                let badgeStatus = '';
+                if (d.pago === 0 && d.totalDevidoComSaldo > 0) {
+                    badgeStatus = `<span class="bg-amber-50 text-amber-700 text-[10px] sm:text-xs px-2 py-0.5 rounded-full font-semibold border border-amber-200/50">Pendente</span>`;
+                } else if (diferenca >= -0.05) {
+                    badgeStatus = `<span class="bg-emerald-50 text-emerald-700 text-[10px] sm:text-xs px-2 py-0.5 rounded-full font-semibold border border-emerald-200/50">Quitado</span>`;
+                } else {
+                    badgeStatus = `<span class="bg-rose-50 text-rose-700 text-[10px] sm:text-xs px-2 py-0.5 rounded-full font-semibold border border-rose-200/50">Faltou ${formatarMoeda(Math.abs(diferenca))}</span>`;
+                }
+
+                let htmlCompras = d.comprasDoMes.map(c => `
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center text-xs sm:text-sm py-2 px-2.5 bg-slate-50 rounded-xl mb-1.5 border border-slate-100 gap-2">
+                        <div class="min-w-0">
+                            <span class="font-medium text-slate-700 break-words">${c.descricao}</span>
+                            <span class="text-[11px] text-slate-400 ml-1">(P.${c.parcelaAtual}/${c.totalParcelas})</span>
+                            ${c.descontoAplicado > 0 ? `<span class="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded ml-1 font-semibold">Desc: -${formatarMoeda(c.descontoAplicado)}</span>` : ''}
+                        </div>
+                        <div class="flex items-center gap-1.5 w-full sm:w-auto justify-end flex-wrap shrink-0">
+                            <span class="font-bold text-slate-800">${formatarMoeda(c.valorParcela)}</span>
+                            ${c.totalParcelas > 1 ? `<button onclick="abrirModalAntecipacao('${c.id}', '${mesAno}', '${c.descricao.replace(/'/g, "\\'")}')" class="text-emerald-600 hover:text-emerald-800 text-[11px] font-semibold bg-emerald-50 px-2 py-1 rounded border border-emerald-200">Antecipar</button>` : ''}
+                            <button onclick="editarCompra('${c.id}')" class="dynamic-text text-[11px] font-semibold dynamic-light-bg px-2 py-1 rounded border border-slate-200">Editar</button>
+                            <button onclick="excluirCompra('${c.id}')" class="text-rose-600 hover:text-rose-800 text-[11px] font-semibold bg-rose-50 px-2 py-1 rounded border border-rose-200">Excluir</button>
+                        </div>
+                    </div>
+                `).join('');
+
+                container.innerHTML += `
+                    <div class="p-3.5 sm:p-5 transition hover:bg-slate-50/50 w-full box-border">
+                        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2.5">
+                            <div class="cursor-pointer flex-1 min-w-0 w-full sm:w-auto" onclick="toggleDetalhesDevedor('${pId}')">
+                                <div class="flex items-center gap-2">
+                                    <h4 class="font-bold text-slate-800 text-sm sm:text-base truncate">${d.nome}</h4>
+                                    <i data-lucide="chevron-down" id="icon-${pId}" class="w-4 h-4 text-slate-400 transition-transform shrink-0"></i>
+                                </div>
+                                <p class="text-[11px] sm:text-xs text-slate-500 mt-0.5 truncate">Gastos: ${formatarMoeda(d.totalGastos)} ${d.saldoAnterior !== 0 ? `| Anterior: ${formatarMoeda(d.saldoAnterior)}` : ''}</p>
+                            </div>
+                            <div class="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto flex-wrap">
+                                <div class="text-left sm:text-right">
+                                    <p class="text-xs sm:text-sm font-extrabold text-slate-900">${formatarMoeda(d.totalDevidoComSaldo)}</p>
+                                    <p class="text-[11px] text-emerald-600 font-medium">Pago: ${formatarMoeda(d.pago)}</p>
+                                </div>
+                                ${badgeStatus}
+                                <div class="flex items-center gap-1.5">
+                                    <button onclick="abrirModalEnviarFatura('${pId}', '${mesAno}')" class="bg-slate-100 hover:bg-slate-200 text-slate-700 p-2 rounded-xl text-xs font-bold flex items-center transition" title="Enviar Fatura">
+                                        <i data-lucide="share-2" class="w-3.5 h-3.5"></i>
+                                    </button>
+                                    <button onclick="abrirModalPagamento('${pId}', '${mesAno}', ${d.totalDevidoComSaldo})" class="dynamic-light-bg dynamic-text px-2.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1 transition">
+                                        <i data-lucide="dollar-sign" class="w-3.5 h-3.5"></i> Pagar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="detalhes-${pId}" class="hidden mt-3 pl-2 sm:pl-4 border-l-2 dynamic-border space-y-1 w-full box-border">
+                            ${htmlCompras || '<p class="text-[11px] text-slate-400 italic py-1">Nenhuma compra direta neste mês.</p>'}
+                        </div>
+                    </div>
+                `;
+            });
+            lucide.createIcons();
+        }
+
+        function toggleDetalhesDevedor(pId) {
+            const el = document.getElementById(`detalhes-${pId}`);
+            const icon = document.getElementById(`icon-${pId}`);
+            if (el.classList.contains('hidden')) {
+                el.classList.remove('hidden');
+                if(icon) icon.style.transform = 'rotate(180deg)';
+            } else {
+                el.classList.add('hidden');
+                if(icon) icon.style.transform = 'rotate(0deg)';
+            }
+        }
+
+        function abrirModalEnviarFatura(pId, mesAno) {
+            const p = dados.pessoas.find(x => x.id === pId);
+            if (!p) return;
+            const res = calcularDadosDevedorMes(pId, mesAno);
+
+            document.getElementById('extratoPessoaNome').textContent = p.nome;
+            document.getElementById('extratoMesAnoLabel').textContent = mesAno;
+            document.getElementById('extratoTotalGastos').textContent = formatarMoeda(res.totalGastos);
+            document.getElementById('extratoTotalPago').textContent = formatarMoeda(res.pago);
+            document.getElementById('extratoTotalPendente').textContent = formatarMoeda(Math.max(0, res.totalDevidoComSaldo - res.pago));
+
+            const saldoRow = document.getElementById('extratoSaldoAnteriorRow');
+            if (res.saldoAnterior > 0) {
+                saldoRow.style.display = 'flex';
+                document.getElementById('extratoSaldoAnterior').textContent = formatarMoeda(res.saldoAnterior);
+            } else {
+                saldoRow.style.display = 'none';
+            }
+
+            const listaEl = document.getElementById('extratoItensLista');
+            listaEl.innerHTML = '';
+            res.comprasDoMes.forEach(c => {
+                listaEl.innerHTML += `
+                    <div class="flex justify-between items-center py-1 border-b border-slate-800/60 text-[11px] gap-2">
+                        <span class="text-slate-300 truncate">${c.descricao} (${c.parcelaAtual}/${c.totalParcelas})</span>
+                        <span class="font-semibold text-white shrink-0">${formatarMoeda(c.valorParcela)}</span>
+                    </div>
+                `;
+            });
+
+            const modal = document.getElementById('modalEnviarFatura');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            lucide.createIcons();
+        }
+
+        function fecharModalEnviarFatura() {
+            const modal = document.getElementById('modalEnviarFatura');
+            modal.classList.remove('flex');
+            modal.classList.add('hidden');
+        }
+
+        async function compartilharFaturaComoImagem() {
+            const elemento = document.getElementById('cartaoExtratoExportar');
+            const listaEl = document.getElementById('extratoItensLista');
+            const btn = document.getElementById('btnCompartilharImg');
+            const nome = document.getElementById('extratoPessoaNome').textContent.trim();
+            const mes = document.getElementById('extratoMesAnoLabel').textContent.trim();
+
+            btn.innerHTML = '<span>Preparando...</span>';
+            btn.disabled = true;
+
+            // Remove totalmente qualquer limitador de altura ou rolagem no DOM original para renderizar livremente
+            const maxHeightAntiga = listaEl.style.maxHeight;
+            const overflowAntigo = listaEl.style.overflowY;
+            const overflowContainerAntigo = elemento.style.overflow;
+
+            listaEl.style.maxHeight = 'none';
+            listaEl.style.overflowY = 'visible';
+            elemento.style.overflow = 'visible';
+
+            try {
+                // Cria um clone fora da tela com dimensões fluidas e garante respiro vertical para evitar cortes de texto no html2canvas
+                const clone = elemento.cloneNode(true);
+                clone.style.position = 'fixed';
+                clone.style.left = '-9999px';
+                clone.style.top = '0';
+                clone.style.width = '480px';
+                clone.style.maxWidth = 'none';
+                clone.style.height = 'auto';
+                clone.style.padding = '28px';
+                clone.style.borderRadius = '20px';
+                clone.style.backgroundColor = '#0f172a';
+                clone.style.boxSizing = 'border-box';
+
+                // Garante que a lista clonada também não tenha restrições
+                const listaClone = clone.querySelector('#extratoItensLista');
+                if (listaClone) {
+                    listaClone.style.maxHeight = 'none';
+                    listaClone.style.overflowY = 'visible';
+                }
+
+                // Aplica espaçamento seguro e linha alta em todos os textos para evitar corte de fontes
+                clone.querySelectorAll('p, h4, span, div').forEach(el => {
+                    el.style.lineHeight = '1.5';
+                });
+
+                document.body.appendChild(clone);
+
+                const canvas = await html2canvas(clone, {
+                    scale: 2.5,
+                    backgroundColor: '#0f172a',
+                    useCORS: true,
+                    logging: false,
+                    windowWidth: 1000
+                });
+
+                document.body.removeChild(clone);
+
+                // Restaura os estilos originais
+                listaEl.style.maxHeight = maxHeightAntiga;
+                listaEl.style.overflowY = overflowAntigo;
+                elemento.style.overflow = overflowContainerAntigo;
+
+                const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+                const nomeArquivo = `fatura_${nome.replace(/\s+/g, '_')}_${mes}.png`;
+                const file = new File([blob], nomeArquivo, { type: 'image/png' });
+
+                if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                    await navigator.share({
+                        files: [file],
+                        title: 'Fatura do Cartão',
+                        text: `Fatura ${nome} - ${mes}`
+                    });
+                } else {
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.download = nomeArquivo;
+                    link.href = url;
+                    link.click();
+                    URL.revokeObjectURL(url);
+                    mostrarMensagem('A imagem da fatura foi baixada no seu dispositivo!', 'Imagem Salva');
+                }
+            } catch (err) {
+                listaEl.style.maxHeight = maxHeightAntiga;
+                listaEl.style.overflowY = overflowAntigo;
+                elemento.style.overflow = overflowContainerAntigo;
+                if (err && err.name !== 'AbortError') {
+                    mostrarMensagem('Não foi possível gerar ou compartilhar a imagem da fatura.', 'Erro');
+                }
+            } finally {
+                btn.innerHTML = '<i data-lucide="share-2" class="w-4 h-4"></i> Compartilhar Fatura';
+                lucide.createIcons();
+                btn.disabled = false;
+            }
+        }
+
+        function renderizarProprias() {
+            const mesAno = document.getElementById('filtroMesFatura').value;
+            const virada = dados.config.virada;
+            const titularObj = dados.pessoas.find(p => p.titular);
+            if (!titularObj) return;
+
+            let totalMes = 0;
+            let minhasCompras = [];
+
+            dados.compras.forEach(c => {
+                if (c.pessoaId === titularObj.id) {
+                    let cronograma = calcularCronogramaCompra(c, virada);
+                    cronograma.forEach(p => {
+                        if (p.mes === mesAno) {
+                            totalMes += p.valor;
+                            minhasCompras.push({
+                                ...c,
+                                parcelaAtual: p.nOriginal,
+                                totalParcelas: c.parcelas,
+                                valorParcela: p.valor,
+                                descontoAplicado: p.desconto,
+                                antecipada: !!p.antecipadaDe
+                            });
+                        }
+                    });
+                }
+            });
+
+            document.getElementById('totalPropriasMes').textContent = formatarMoeda(totalMes);
+            const container = document.getElementById('listaComprasProprias');
+            container.innerHTML = '';
+
+            if (minhasCompras.length === 0) {
+                container.innerHTML = `<div class="p-6 text-center text-slate-400 text-xs">Nenhum gasto pessoal registrado nesta fatura.</div>`;
+                return;
+            }
+
+            minhasCompras.forEach(c => {
+                container.innerHTML += `
+                    <div class="p-3.5 flex flex-col sm:flex-row justify-between items-start sm:items-center text-xs sm:text-sm gap-2">
+                        <div class="min-w-0">
+                            <span class="font-medium text-slate-800 break-words">${c.descricao}</span>
+                            <span class="text-[11px] text-slate-400 ml-1">(P.${c.parcelaAtual}/${c.totalParcelas}) - ${c.data}</span>
+                            ${c.descontoAplicado > 0 ? `<span class="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded ml-1 font-semibold">Desc: -${formatarMoeda(c.descontoAplicado)}</span>` : ''}
+                        </div>
+                        <div class="flex items-center gap-1.5 w-full sm:w-auto justify-end flex-wrap shrink-0">
+                            <span class="font-bold text-slate-900">${formatarMoeda(c.valorParcela)}</span>
+                            ${c.totalParcelas > 1 ? `<button onclick="abrirModalAntecipacao('${c.id}', '${mesAno}', '${c.descricao.replace(/'/g, "\\'")}')" class="text-emerald-600 hover:text-emerald-800 text-[11px] font-semibold bg-emerald-50 px-2 py-1 rounded border border-emerald-200">Antecipar</button>` : ''}
+                            <button onclick="editarCompra('${c.id}')" class="dynamic-text text-[11px] font-semibold dynamic-light-bg px-2 py-1 rounded border border-slate-200">Editar</button>
+                            <button onclick="excluirCompra('${c.id}')" class="text-rose-600 hover:text-rose-800 text-[11px] font-semibold bg-rose-50 px-2 py-1 rounded border border-rose-200">Excluir</button>
+                        </div>
+                    </div>
+                `;
+            });
+            lucide.createIcons();
+        }
+
+        function abrirModalAntecipacao(compraId, mesAno, desc) {
+            document.getElementById('antCompraId').value = compraId;
+            document.getElementById('antMesAno').value = mesAno;
+            document.getElementById('antDescricaoInfo').textContent = `Compra: ${desc} (Destino: ${mesAno})`;
+            document.getElementById('antQtdParcelas').value = 1;
+            document.getElementById('antDescontoValor').value = '';
+
+            const modal = document.getElementById('modalAntecipacao');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function fecharModalAntecipacao() {
+            const modal = document.getElementById('modalAntecipacao');
+            modal.classList.remove('flex');
+            modal.classList.add('hidden');
+        }
+
+        function salvarAntecipacaoCompra(e) {
+            e.preventDefault();
+            const compraId = document.getElementById('antCompraId').value;
+            const mesDestino = document.getElementById('antMesAno').value;
+            const qtd = parseInt(document.getElementById('antQtdParcelas').value) || 1;
+            const desconto = parseFloat(document.getElementById('antDescontoValor').value) || 0;
+
+            dados.antecipacoes.push({ compraId, mesDestino, qtd, desconto });
+            salvarDados();
+            fecharModalAntecipacao();
+            renderizarFaturas();
+            renderizarProprias();
+        }
+
+        function abrirModalPagamento(pessoaId, mesAno, valorSugerido) {
+            document.getElementById('pagPessoaId').value = pessoaId;
+            document.getElementById('pagMesAno').value = mesAno;
+            document.getElementById('pagValor').value = valorSugerido > 0 ? valorSugerido.toFixed(2) : '0.00';
+            document.getElementById('pagData').value = new Date().toISOString().split('T')[0];
+
+            const p = dados.pessoas.find(x => x.id === pessoaId);
+            document.getElementById('modalTituloPagamento').textContent = `Pagamento: ${p ? p.nome : ''}`;
+
+            const existente = dados.pagamentos.find(x => x.pessoaId === pessoaId && x.mesAno === mesAno);
+            if (existente) {
+                document.getElementById('pagValor').value = existente.valorPago.toFixed(2);
+                document.getElementById('pagData').value = existente.dataPagamento || new Date().toISOString().split('T')[0];
+            }
+
+            const modal = document.getElementById('modalPagamento');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function fecharModalPagamento() {
+            const modal = document.getElementById('modalPagamento');
+            modal.classList.remove('flex');
+            modal.classList.add('hidden');
+        }
+
+        function salvarPagamento(e) {
+            e.preventDefault();
+            const pessoaId = document.getElementById('pagPessoaId').value;
+            const mesAno = document.getElementById('pagMesAno').value;
+            const valorPago = parseFloat(document.getElementById('pagValor').value) || 0;
+            const dataPagamento = document.getElementById('pagData').value;
+
+            dados.pagamentos = dados.pagamentos.filter(p => !(p.pessoaId === pessoaId && p.mesAno === mesAno));
+            dados.pagamentos.push({ pessoaId, mesAno, valorPago, dataPagamento });
+
+            salvarDados();
+            fecharModalPagamento();
+            renderizarFaturas();
+        }
+    </script>
+</body>
+</html>
