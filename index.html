@@ -39,6 +39,8 @@
             text-overflow: clip !important;
         }
     </style>
+    <link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#9333ea">
 </head>
 <body class="bg-slate-100 text-slate-800 min-h-screen flex flex-col w-full max-w-[100vw]">
 
@@ -1492,5 +1494,10 @@
             renderizarFaturas();
         }
     </script>
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js');
+  }
+</script>
 </body>
 </html>
