@@ -1,21 +1,24 @@
 {
   "name": "Gerenciador de Faturas BETA",
   "short_name": "Faturas BETA",
-  "start_url": "./index.html",
-  "scope": "./",
+  "start_url": "/Gerenciador-de-Faturas/",
+  "scope": "/Gerenciador-de-Faturas/",
+  "id": "/Gerenciador-de-Faturas/",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#000000",
+  "theme_color": "#9333ea",
   "icons": [
     {
-      "src": "./icons/icon-192.png",
+      "src": "/Gerenciador-de-Faturas/icons/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
-      "src": "./icons/icon-512.png",
+      "src": "/Gerenciador-de-Faturas/icons/icon-512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }
