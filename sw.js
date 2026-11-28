@@ -1,10 +1,11 @@
-const CACHE_NAME = 'pwa-cache-v4';
+const CACHE_NAME = 'pwa-cache-v5';
 const CACHE_PREFIX = 'pwa-cache-';
 const ASSETS = [
   './',
   './index.html',
   './manifest.json',
   './enhancements.js',
+  './ui-fixes.js',
   './sw.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
@@ -43,24 +44,25 @@ async function injectEnhancements(response) {
   if (!response || !response.ok) return response;
 
   const html = await response.text();
-  if (html.includes('src="./enhancements.js"')) {
-    return new Response(html, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: response.headers
-    });
+  let transformed = html;
+  const scripts = [
+    ['src="./enhancements.js"', '<script src="./enhancements.js"></script>\n'],
+    ['src="./ui-fixes.js"', '<script src="./ui-fixes.js"></script>\n']
+  ];
+
+  for (const [marker, script] of scripts) {
+    if (transformed.includes(marker)) continue;
+    const insertionPoint = '<!-- Script Principal -->';
+    transformed = transformed.includes(insertionPoint)
+      ? transformed.replace(insertionPoint, `${script}${insertionPoint}`)
+      : transformed.replace('</body>', `${script}</body>`);
   }
 
-  const script = '<script src="./enhancements.js"></script>\n';
-  const marker = '<!-- Script Principal -->';
-  const transformed = html.includes(marker)
-    ? html.replace(marker, `${script}${marker}`)
-    : html.replace('</body>', `${script}</body>`);
+  if (transformed === html) return response;
 
   const headers = new Headers(response.headers);
   headers.delete('content-length');
   headers.delete('content-encoding');
-
   return new Response(transformed, {
     status: response.status,
     statusText: response.statusText,
@@ -108,7 +110,6 @@ self.addEventListener('fetch', (event) => {
 
   event.respondWith((async () => {
     const cached = await caches.match(request);
-
     const networkResponse = fetch(request)
       .then((response) => cacheResponse(request, response))
       .catch(() => null);
