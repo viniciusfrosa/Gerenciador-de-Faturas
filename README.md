@@ -1,66 +1,48 @@
 # Gerenciador de Faturas
 
-Aplicação web progressiva (PWA) para gerenciar faturas compartilhadas, compras parceladas, pagamentos e gastos pessoais do titular.
+Aplicação web progressiva (PWA) para acompanhar faturas compartilhadas, compras parceladas, pagamentos, gastos do titular e compras recorrentes.
 
 ## Funcionalidades
 
-- Cadastro e edição de devedores.
-- Registro de compras individuais e compras conjuntas.
-- Parcelamento de compras com cálculo mensal.
-- Registro e edição de pagamentos.
-- Antecipação de parcelas com desconto.
-- Separação dos gastos pessoais do titular.
-- Filtros mensais por fatura.
-- Exportação da fatura como imagem.
-- Backup e restauração dos dados em formato JSON.
-- Funcionamento como PWA instalada no celular ou computador.
+- Cadastro de devedores e despesas individuais/conjuntas.
+- Parcelamento, pagamentos e antecipação com desconto.
+- Gastos do titular separados por fatura.
+- Categorias de gastos e filtro por pessoa/categoria.
+- Recorrências mensais, semanais ou anuais, com período opcional.
+- Exportação de fatura como imagem.
+- Backup e restauração JSON.
+- Instalação como PWA e suporte offline.
 
-## Uso online
+## Usar online
 
 https://viniciusfrosa.github.io/Gerenciador-de-Faturas/
 
 ## Executar localmente
 
-Não é necessário instalar dependências ou executar um servidor de compilação.
-
-1. Clone o repositório:
+Requer Python 3 para servir os arquivos estáticos:
 
 ```bash
 git clone https://github.com/viniciusfrosa/Gerenciador-de-Faturas.git
 cd Gerenciador-de-Faturas
-```
-
-2. Inicie um servidor estático:
-
-```bash
 python3 -m http.server 8080
 ```
 
-3. Abra `http://localhost:8080` no navegador.
+Acesse `http://localhost:8080`.
 
-## Armazenamento dos dados
+## Dados e recorrências
 
-Todos os dados são armazenados no `localStorage` do navegador. Eles não são enviados para um servidor.
+As informações ficam no armazenamento local do navegador (`localStorage`); não são enviadas a um servidor. Faça backups em **Configurações > Backup & Restauração** antes de limpar os dados do navegador ou trocar de dispositivo.
 
-Para preservar ou transferir os dados:
+As recorrências são locais ao navegador/dispositivo. Ao abrir o app, os lançamentos vencidos são gerados uma única vez para cada ocorrência. Para transferi-las, inclua o armazenamento local nas suas rotinas de backup ou recrie as recorrências no outro aparelho.
 
-1. Abra **Configurações**.
-2. Escolha **Baixar Backup**.
-3. Guarde o arquivo JSON.
-4. Em outro aparelho ou após limpar o navegador, use **Restaurar**.
+## Testes
 
-A limpeza dos dados do navegador remove permanentemente as informações locais que não possuam backup.
+Com Node.js 18 ou superior:
 
-## Tecnologias
-
-- HTML
-- CSS com Tailwind CDN
-- JavaScript
-- Service Worker
-- Web Manifest
-- Lucide Icons
-- html2canvas
+```bash
+npm test
+```
 
 ## Licença
 
-Este projeto está licenciado sob a licença MIT. Consulte o arquivo [LICENSE](LICENSE).
+MIT. Consulte [LICENSE](LICENSE).
