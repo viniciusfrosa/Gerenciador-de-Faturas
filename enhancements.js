@@ -7,6 +7,14 @@
   const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
   const cents = (value) => Number.isFinite(Number(value)) ? Math.round(Number(value) * 100) / 100 : value;
 
+  // The legacy UI interpolates these values into HTML templates and inline
+  // handlers. Remove markup/quote delimiters from persisted and newly entered
+  // text until those renderers can be migrated to textContent/createElement.
+  const safeText = (value, maxLength = 500) => typeof value === 'string'
+    ? value.replace(/[<>"'`\\&\u0000-\u001f\u007f]/g, '').trim().slice(0, maxLength)
+    : '';
+  const safeId = (value) => String(value ?? '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
+
   function normalizeData(value) {
     if (!isPlainObject(value)) return value;
 
@@ -16,33 +24,47 @@
       ? Number(data.config.virada) : 10;
     data.config.vencimento = Number.isInteger(Number(data.config.vencimento)) && Number(data.config.vencimento) >= 1 && Number(data.config.vencimento) <= 31
       ? Number(data.config.vencimento) : 17;
-    data.config.nomeTitular = typeof data.config.nomeTitular === 'string' && data.config.nomeTitular.trim()
-      ? data.config.nomeTitular.trim() : 'Seu Nome';
+    data.config.nomeTitular = safeText(data.config.nomeTitular, 100) || 'Seu Nome';
 
-    data.pessoas = Array.isArray(data.pessoas) ? data.pessoas.filter(isPlainObject) : [];
+    data.pessoas = Array.isArray(data.pessoas) ? data.pessoas.filter(isPlainObject).map((person) => ({
+      ...person,
+      id: safeId(person.id) || `pessoa-${Math.random().toString(36).slice(2, 10)}`,
+      nome: safeText(person.nome, 100) || 'Sem nome'
+    })) : [];
     if (!data.pessoas.some((person) => person.titular)) {
       data.pessoas.unshift({ id: 'titular', nome: `${data.config.nomeTitular} (Titular)`, titular: true });
     }
-    data.compras = Array.isArray(data.compras) ? data.compras.filter(isPlainObject) : [];
-    data.pagamentos = Array.isArray(data.pagamentos) ? data.pagamentos.filter(isPlainObject) : [];
-    data.antecipacoes = Array.isArray(data.antecipacoes) ? data.antecipacoes.filter(isPlainObject) : [];
 
-    data.compras.forEach((purchase) => {
-      if (Number.isFinite(Number(purchase.valorTotal))) purchase.valorTotal = cents(purchase.valorTotal);
-      if (Number.isFinite(Number(purchase.parcelas))) purchase.parcelas = Math.min(48, Math.max(1, Math.trunc(Number(purchase.parcelas))));
-    });
-    data.pagamentos.forEach((payment) => {
-      if (Number.isFinite(Number(payment.valorPago))) payment.valorPago = cents(payment.valorPago);
-    });
-    data.antecipacoes.forEach((advance) => {
-      if (Number.isFinite(Number(advance.desconto))) advance.desconto = cents(advance.desconto);
-      if (Number.isFinite(Number(advance.qtd))) advance.qtd = Math.max(1, Math.trunc(Number(advance.qtd)));
-    });
+    data.compras = Array.isArray(data.compras) ? data.compras.filter(isPlainObject).map((purchase) => ({
+      ...purchase,
+      id: safeId(purchase.id) || `compra-${Math.random().toString(36).slice(2, 10)}`,
+      pessoaId: safeId(purchase.pessoaId),
+      descricao: safeText(purchase.descricao, 200),
+      data: typeof purchase.data === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(purchase.data) ? purchase.data : '',
+      valorTotal: Number.isFinite(Number(purchase.valorTotal)) ? cents(purchase.valorTotal) : 0,
+      parcelas: Number.isFinite(Number(purchase.parcelas)) ? Math.min(48, Math.max(1, Math.trunc(Number(purchase.parcelas)))) : 1
+    })) : [];
+
+    data.pagamentos = Array.isArray(data.pagamentos) ? data.pagamentos.filter(isPlainObject).map((payment) => ({
+      ...payment,
+      pessoaId: safeId(payment.pessoaId),
+      mesAno: typeof payment.mesAno === 'string' && /^\d{4}-\d{2}$/.test(payment.mesAno) ? payment.mesAno : '',
+      dataPagamento: typeof payment.dataPagamento === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(payment.dataPagamento) ? payment.dataPagamento : '',
+      valorPago: Number.isFinite(Number(payment.valorPago)) ? cents(payment.valorPago) : 0
+    })) : [];
+
+    data.antecipacoes = Array.isArray(data.antecipacoes) ? data.antecipacoes.filter(isPlainObject).map((advance) => ({
+      ...advance,
+      compraId: safeId(advance.compraId),
+      mesDestino: typeof advance.mesDestino === 'string' && /^\d{4}-\d{2}$/.test(advance.mesDestino) ? advance.mesDestino : '',
+      desconto: Number.isFinite(Number(advance.desconto)) ? cents(advance.desconto) : 0,
+      qtd: Number.isFinite(Number(advance.qtd)) ? Math.max(1, Math.trunc(Number(advance.qtd))) : 1
+    })) : [];
     return data;
   }
 
-  // Keep the single-file app from crashing on malformed local data and preserve
-  // the original value in a dated recovery key before starting with defaults.
+  // Keep the app from crashing on malformed local data and preserve the
+  // original value in a dated recovery key before starting with defaults.
   Storage.prototype.getItem = function (key) {
     const value = originalGetItem.call(this, key);
     if (this !== window.localStorage || key !== STORAGE_KEY || value === null) return value;
@@ -122,7 +144,7 @@
       if (!Number.isFinite(discount) || moneyToCents(discount) < 0) return rejectForm(event, 'O desconto não pode ser negativo.');
     }
 
-    if (form.id !== 'modalCompraConjunta' && form.querySelector('#conjuntaValorTotal')) {
+    if (form.querySelector('#conjuntaValorTotal')) {
       const total = moneyToCents(document.getElementById('conjuntaValorTotal').value);
       const fields = [...form.querySelectorAll('.input-conjunta')];
       const values = fields.map((input) => moneyToCents(input.value || 0));
@@ -135,9 +157,31 @@
   }
 
   function installGlobalGuards() {
-    document.addEventListener('submit', validateForm, true);
+    // Sanitize user-controlled text before the legacy submit handlers render it.
+    const textFields = ['cfgNomeTitular', 'nomeNovaPessoa', 'editPessoaNomeInput', 'compraDesc', 'conjuntaDesc'];
+    const sanitizeInputs = (root = document) => {
+      textFields.forEach((id) => {
+        const field = root.querySelector(`#${id}`);
+        if (field && field.value) field.value = safeText(field.value, id.includes('Desc') ? 200 : 100);
+      });
+    };
+    document.addEventListener('input', (event) => {
+      if (textFields.includes(event.target?.id)) {
+        const field = event.target;
+        const cleaned = safeText(field.value, field.id.includes('Desc') ? 200 : 100);
+        if (cleaned !== field.value) {
+          const cursor = field.selectionStart;
+          field.value = cleaned;
+          if (typeof cursor === 'number') field.setSelectionRange(Math.min(cursor, cleaned.length), Math.min(cursor, cleaned.length));
+        }
+      }
+    }, true);
+    document.addEventListener('submit', (event) => {
+      sanitizeInputs(event.target);
+      validateForm(event);
+    }, true);
 
-    // Correct date inputs after the existing UI functions populate them using UTC.
+    // Correct date inputs after existing UI functions populate them using UTC.
     ['abrirModalCompra', 'abrirModalCompraTitular', 'abrirModalCompraConjunta'].forEach((name) => {
       const original = window[name];
       if (typeof original !== 'function') return;
